@@ -48,7 +48,7 @@ spec:
         - name: roseaw-dockerhub
       containers:
         - name: flask
-          image: cithit/owusurk:latest
+          image: owusurk/225-lab4-2:latest
           ports:
             - containerPort: 5000
           volumeMounts:
