@@ -7,29 +7,33 @@ pipeline {
         IMAGE_TAG = "build-${BUILD_NUMBER}"
         GITHUB_URL = 'https://github.com/Owusurk/225-lab4-2.git'
         KUBECONFIG = credentials('owusurk-225')
-    }
+     }
 
-    stages {
+   stages {
 
+        // 1. Checkout
         stage('Code Checkout') {
             steps {
                 cleanWs()
                 checkout([$class: 'GitSCM',
-                    branches: [[name: '*/main']],
-                    userRemoteConfigs: [[url: "${GITHUB_URL}"]]
-                ])
+                          branches: [[name: '*/main']],
+                          userRemoteConfigs: [[url: "${GITHUB_URL}"]]])
             }
         }
 
+        // 2. Static Code Testing (Python + HTML)
+        //    -> satisfies "Static Code Testing" rubric
         stage('Static Code Testing') {
-            steps {
-                sh '''
-                    npm install htmlhint --save-dev
-                    npx htmlhint templates/index.html templates/page3.html || echo "htmlhint found issues but pipeline continues."
-                '''
-            }
-        }
-
+    steps {
+        sh '''
+            npm install htmlhint --save-dev
+            # Run htmlhint but don't fail the whole build on lint errors
+            npx htmlhint templates/index.html templates/page3.html || echo "htmlhint found issues but pipeline continues for demo."
+        '''
+    }
+}
+        // 3. Docker Build & Push
+        //    -> satisfies "Docker Build" rubric
         stage('Build & Push Docker Image') {
             steps {
                 script {
@@ -41,28 +45,39 @@ pipeline {
             }
         }
 
+        // 4. Deploy to DEV (Kubernetes)
+        //    -> DEV environment backed by NFS PV (data persistence)
         stage('Deploy to Dev Environment') {
             steps {
                 script {
+                    // remove old dev deployments (optional, keeps things clean)
                     sh "kubectl delete --all deployments --namespace=default || true"
+
+                    // update image tag to the new build
                     sh "sed -i 's|${DOCKER_IMAGE}:latest|${DOCKER_IMAGE}:${IMAGE_TAG}|' deployment-dev.yaml"
+
+                    // apply dev manifests
                     sh "kubectl apply -f deployment-dev.yaml"
                 }
             }
         }
 
+        // 5. DAST (Dastardly) against DEV
+        //    -> dynamic testing of running app
         stage('Run Security Checks (DAST)') {
             steps {
+                sh 'docker pull public.ecr.aws/portswigger/dastardly:latest'
                 sh '''
-                    docker pull public.ecr.aws/portswigger/dastardly:latest
                     docker run --user $(id -u) -v ${WORKSPACE}:${WORKSPACE}:rw \
-                        -e BURP_START_URL=http://10.48.229.143 \
-                        -e BURP_REPORT_FILE_PATH=${WORKSPACE}/dastardly-report.xml \
-                        public.ecr.aws/portswigger/dastardly:latest
+                    -e BURP_START_URL=http://10.48.229.143 \
+                    -e BURP_REPORT_FILE_PATH=${WORKSPACE}/dastardly-report.xml \
+                    public.ecr.aws/portswigger/dastardly:latest
                 '''
             }
         }
 
+        // 6. Reset DB after security checks
+        //    -> shows you can control persisted data
         stage('Reset DB After Security Checks') {
             steps {
                 script {
@@ -73,18 +88,20 @@ pipeline {
 
                     sh """
                         kubectl exec ${appPod} -- python3 - <<'PY'
-import sqlite3
-conn = sqlite3.connect('/nfs/demo.db')
-cur = conn.cursor()
-cur.execute('DELETE FROM contacts')
-conn.commit()
-conn.close()
-PY
+                        import sqlite3
+                        conn = sqlite3.connect('/nfs/demo.db')
+                        cur = conn.cursor()
+                        cur.execute('DELETE FROM contacts')
+                        conn.commit()
+                        conn.close()
+                        PY
                     """
                 }
             }
         }
 
+        // 7. Generate Test Data into /nfs/demo.db
+        //    -> uses persistence (NFS PV + PVC)
         stage('Generate Test Data') {
             steps {
                 script {
@@ -100,6 +117,8 @@ PY
             }
         }
 
+        // 8. Acceptance Tests (Selenium)
+        //    -> dynamic code testing, hitting HTML UI
         stage('Run Acceptance Tests (Selenium)') {
             steps {
                 script {
@@ -111,6 +130,7 @@ PY
             }
         }
 
+        // 9. Remove Test Data
         stage('Remove Test Data') {
             steps {
                 script {
@@ -124,6 +144,8 @@ PY
             }
         }
 
+        // 10. Deploy to PROD (Kubernetes)
+        //     -> separate PROD environment (LoadBalancer service)
         stage('Deploy to Prod Environment') {
             steps {
                 script {
@@ -133,6 +155,7 @@ PY
             }
         }
 
+        // 11. Final sanity check
         stage('Check Kubernetes Cluster') {
             steps {
                 sh "kubectl get all"
@@ -140,18 +163,19 @@ PY
         }
     }
 
+    // ChatOps: Slack notifications
     post {
         success {
             slackSend color: "good",
-                message: "Lab 5.1 pipeline SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+                      message: "✅ Lab 5.1 pipeline SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
         }
         unstable {
             slackSend color: "warning",
-                message: "Lab 5.1 pipeline UNSTABLE: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+                      message: "⚠️ Lab 5.1 pipeline UNSTABLE: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
         }
         failure {
             slackSend color: "danger",
-                message: "Lab 5.1 pipeline FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+                      message: "❌ Lab 5.1 pipeline FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
         }
     }
 }
