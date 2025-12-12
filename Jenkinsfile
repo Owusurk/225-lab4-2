@@ -3,9 +3,9 @@ pipeline {
 
     environment {
         DOCKER_CREDENTIALS_ID = 'owusurk-dockerhub'
-        DOCKER_IMAGE = 'owusurk/225-lab5-1'
+        DOCKER_IMAGE = 'owusurk/225-lab4-2'
         IMAGE_TAG = "build-${BUILD_NUMBER}"
-        GITHUB_URL = 'https://github.com/Owusurk/YOUR-REPO-HERE.git'
+        GITHUB_URL = 'https://github.com/Owusurk/225-lab4-2.git'
         KUBECONFIG = credentials('owusurk-225')
     }
 
