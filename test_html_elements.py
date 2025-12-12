@@ -1,30 +1,47 @@
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.firefox.options import Options
+import os
+import time
 import unittest
 
-class TestContacts(unittest.TestCase):
-    def setUp(self):
-        # Setup Firefox options
-        firefox_options = Options()
-        firefox_options.add_argument("--headless")  # Ensures the browser window does not open
-        firefox_options.add_argument("--no-sandbox")
-        firefox_options.add_argument("--disable-dev-shm-usage")
-        self.driver = webdriver.Firefox(options=firefox_options)
+from selenium import webdriver
+from selenium.webdriver.firefox.options import Options
 
-    def test_contacts(self):
+
+class TestContacts(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        # Allow override via environment variable, default to your Dev IP
+        cls.base_url = os.environ.get("DEV_URL", "http://10.48.229.143")
+
+        options = Options()
+        options.add_argument("--headless")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+
+        cls.driver = webdriver.Firefox(options=options)
+
+    def test_contacts_present(self):
         driver = self.driver
-        driver.get("http://10.48.229.143")  # Replace with your target website (your 'dev' site/clusterIP)
-        
+        driver.get(self.base_url)
+
+        # Give the app a little time to render and pull data
+        time.sleep(5)
+
+        page = driver.page_source
+
         # Check for the presence of all 10 test contacts
         for i in range(10):
-            test_name = f'Test Name {i}'
-            assert test_name in driver.page_source, f"Test contact {test_name} not found in page source"
-        print("Test completed successfully. All 10 test contacts were verified.")
+            test_name = f"Test Name {i}"
+            self.assertIn(
+                test_name,
+                page,
+                msg=f"Test contact {test_name} not found in page source",
+            )
 
-    def tearDown(self):
-        self.driver.quit()
+    @classmethod
+    def tearDownClass(cls):
+        cls.driver.quit()
+
 
 if __name__ == "__main__":
     unittest.main()
